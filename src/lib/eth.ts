@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 
-// 컨트랙트 주소와 ABI 업데이트
+// 컨트랙트 주소와 ABI 업데이트 (Remix에서 배포 후 복사)
 const CONTRACT_ADDRESS = 'YOUR_SEPOLIA_CONTRACT_ADDRESS_HERE';
 const ABI = [
   "function vote(string option)",
@@ -17,12 +17,13 @@ let contract: ethers.Contract | undefined;
 
 async function getProvider() {
   if (!provider) {
-    if (window.ethereum) {
-      provider = new ethers.BrowserProvider(window.ethereum);
+    // window.ethereum 존재 여부 + null 체크
+    if ((window as any).ethereum) {
+      provider = new ethers.BrowserProvider((window as any).ethereum);
       signer = await provider.getSigner();
       contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
     } else {
-      throw new Error('No Ethereum wallet detected');
+      throw new Error('No Ethereum wallet detected. Please install MetaMask.');
     }
   }
   return { provider, signer, contract };
@@ -30,8 +31,18 @@ async function getProvider() {
 
 export async function connectWallet(): Promise<string> {
   await getProvider();
-  await window.ethereum.request({ method: 'eth_requestAccounts' });
-  return await signer!.getAddress();
+
+  // connectWallet 호출 시 다시 한 번 확인
+  if (!(window as any).ethereum) {
+    throw new Error('Ethereum wallet not found');
+  }
+
+  try {
+    await (window as any).ethereum.request({ method: 'eth_requestAccounts' });
+    return await signer!.getAddress();
+  } catch (error: any) {
+    throw new Error(error.message || 'Failed to connect wallet');
+  }
 }
 
 export async function getAccountAndNetwork() {
@@ -64,10 +75,13 @@ export async function hasVoted(address: string): Promise<boolean> {
 export async function getOptions(): Promise<string[]> {
   await getProvider();
   const options: string[] = [];
-  for (let i = 0; ; i++) {
+  let i = 0;
+  while (true) {
     try {
       const opt = await contract?.options(i);
+      if (!opt) break;
       options.push(opt);
+      i++;
     } catch {
       break;
     }
